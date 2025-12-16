@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>海上生花 AR (脱卡悬浮版)</title>
+    <title>AR 几何漂浮 (V3.0)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
@@ -21,13 +21,12 @@
             text-align: center; backdrop-filter: blur(4px);
         }
         .btn {
-            background: linear-gradient(45deg, #ff416c, #ff4b2b);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white; border: none; padding: 15px 40px;
             border-radius: 50px; font-size: 18px; font-weight: bold;
             pointer-events: auto; 
-            box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);
-            display: none; /* 初始隐藏 */
-            transition: transform 0.1s;
+            box-shadow: 0 4px 15px rgba(118, 75, 162, 0.4);
+            display: none; transition: transform 0.1s;
         }
         .btn:active { transform: scale(0.95); }
     </style>
@@ -36,38 +35,30 @@
 
     <div id="overlay">
         <div class="tip-box" id="status-text">正在寻找花卉图片...</div>
-        <button class="btn" id="action-btn" onclick="spawnWord()">🌸 点击生花</button>
+        <button class="btn" id="action-btn" onclick="spawnShape()">✨ 生成几何体</button>
     </div>
 
-    <!-- 
-      AR 场景配置 
-      missTolerance: 5 -> 增加这个值可以容忍识别图短时间的抖动丢失
-    -->
+    <!-- AR 场景 -->
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 5" 
              color-space="sRGB" 
              renderer="colorManagement: true, physicallyCorrectLights" 
              vr-mode-ui="enabled: false" 
              device-orientation-permission-ui="enabled: false">
 
-        <!-- 
-           a-camera: 开启 look-controls (陀螺仪)，实现脱卡后的旋转追踪
-        -->
+        <!-- 灯光：为了让3D物体有立体感，必须加光 -->
+        <a-light type="ambient" intensity="0.6"></a-light>
+        <a-light type="directional" position="10 10 10" intensity="0.8"></a-light>
+
+        <!-- 摄像机 -->
         <a-camera position="0 0 0" look-controls="enabled: true"></a-camera>
 
         <!-- 识别目标容器 -->
         <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-            <!-- 识别到时显示的辅助光圈 (这个可以跟随图片消失) -->
-            <a-ring color="#ff4b2b" radius-inner="0.5" radius-outer="0.55" opacity="0.5" rotation="0 0 0">
+            <!-- 识别时的扫描光圈 -->
+            <a-ring color="#764ba2" radius-inner="0.5" radius-outer="0.55" opacity="0.5">
                 <a-animation attribute="opacity" from="0.5" to="0.1" dur="1000" dir="alternate" repeat="indefinite"></a-animation>
             </a-ring>
         </a-entity>
-        
-        <!-- 
-           【关键修改】：
-           我们不再把字放在 target-anchor 里面，而是直接放在 scene 下面。
-           我们通过代码把字“搬运”到图片的位置。
-        -->
-
     </a-scene>
 
     <script>
@@ -76,82 +67,48 @@
         const actionBtn = document.getElementById('action-btn');
         const anchor = document.getElementById('target-anchor');
 
-        // 测试文字 (建议改成英文以保证显示，或者用图片)
-        const words = ["Flower", "Life", "Bloom", "Art", "Magic"];
-        const colors = ["#ff0000", "#ff7f00", "#ffff00", "#00ff00", "#00ffff"];
+        // 定义几何体类型库
+        const shapes = [
+            'box',          // 立方体
+            'sphere',       // 球体
+            'cylinder',     // 圆柱
+            'cone',         // 圆锥/四棱锥
+            'torus',        // 甜甜圈
+            'dodecahedron', // 十二面体
+            'tetrahedron'   // 四面体
+        ];
         
-        let count = 0;
+        // 定义颜色库 (糖果色系)
+        const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#96CEB4", "#FFEEAD"];
+        
         let isTargetFound = false;
 
-        // 监听识别状态
         anchor.addEventListener("targetFound", event => {
-            statusText.innerText = "已锁定！移开相机字也不会消失哦";
+            statusText.innerText = "已锁定！点击生成悬浮物体";
             actionBtn.style.display = "block";
             isTargetFound = true;
         });
 
         anchor.addEventListener("targetLost", event => {
-            // 脱卡核心：丢失目标时，不要隐藏按钮，允许用户继续在空中交互（如果需要）
             statusText.innerText = "目标脱离，空间锁定中...";
-            // actionBtn.style.display = "none"; // 注释掉这行，让按钮保持显示
         });
 
-        function spawnWord() {
-            // 为了体验，允许在脱卡状态下继续生成（基于上次位置），或者要求必须在卡片上
-            // 这里我们设定：必须看到卡片才能生成第一个，之后随意
-            if (!isTargetFound && count === 0) return alert("请先扫描图片定位！");
+        function spawnShape() {
+            // 简单校验：第一次必须对准图
+            if (!isTargetFound && scene.children.length < 5) return alert("请先扫描图片定位！");
 
-            const el = document.createElement('a-text');
-            const word = words[count % words.length];
-            const color = colors[count % colors.length];
-            count++;
-
-            // 1. 获取识别图当前的 世界坐标 (World Position) 和 旋转 (Rotation)
-            // 这是脱卡的关键：我们获取绝对坐标，而不是相对坐标
-            const worldPos = new THREE.Vector3();
-            const worldQuat = new THREE.Quaternion();
-            const worldScale = new THREE.Vector3();
+            const el = document.createElement('a-entity');
             
-            anchor.object3D.updateMatrixWorld(); // 强制刷新矩阵
-            anchor.object3D.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+            // 1. 随机选择形状和颜色
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            const color = colors[Math.floor(Math.random() * colors.length)];
 
-            // 2. 设置文字属性
-            el.setAttribute('value', word);
-            el.setAttribute('color', color);
-            el.setAttribute('align', 'center');
-            el.setAttribute('scale', '3 3 3'); // 初始大小
-
-            // 3. 计算生成位置：在识别图中心的基础上，增加随机偏移
-            // Z轴偏移加大 (0.5 ~ 1.5)，实现明显的“悬浮感”
-            // 注意：MindAR的图片垂直方向是Y，垂直于图片朝外是Z
-            const offsetX = (Math.random() - 0.5) * 1.0; 
-            const offsetY = (Math.random() - 0.5) * 1.0;
-            const offsetZ = Math.random() * 1.0 + 0.5; // 浮起高度 0.5米 到 1.5米
-
-            // 将偏移量应用到世界坐标 (这里做简单叠加，更严谨应该基于旋转变换，但简单叠加效果够用了)
-            el.object3D.position.set(
-                worldPos.x + offsetX,
-                worldPos.y + offsetY,
-                worldPos.z + offsetZ 
-            );
-            
-            // 让文字面向摄像机 (始终看着用户)
-            el.setAttribute('look-at', '[camera]');
-
-            // 4. 【关键】将文字添加到 scene (世界)，而不是 anchor (图片)
-            // 这样图片移走后，字依然在世界坐标系里不动
-            scene.appendChild(el);
-
-            // 5. 动画：从图片表面浮起来的效果
-            // 我们用 animation 组件做一个“入场动画”
-            el.setAttribute('animation', {
-                property: 'scale',
-                from: '0 0 0',
-                to: '5 5 5', // 最终变得更大一点
-                dur: 1000,
-                easing: 'easeOutElastic'
+            // 2. 设置几何体属性 (geometry)
+            el.setAttribute('geometry', {
+                primitive: shape,
+                radius: 0.5, // 用于球体等
+                height: 1,   // 用于圆柱等
+                segmentsRadial: 32 // 让圆形更圆滑
             });
-        }
-    </script>
-</body>
-</html>
+
+            // 3. 设置材质 (material)
