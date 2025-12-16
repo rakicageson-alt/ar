@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>海上生花 AR</title>
+    <!-- 引入 A-Frame -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <!-- 引入 MindAR -->
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+    
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+            padding-bottom: 50px;
+        }
+        .tip-box {
+            background: rgba(0, 0, 0, 0.6); color: white; padding: 10px 20px;
+            border-radius: 20px; font-size: 14px; margin-bottom: 10px;
+            text-align: center; backdrop-filter: blur(4px);
+        }
+        .btn {
+            background: #d4380d; /* 换个更艺术的深红色 */
+            color: white; border: none; padding: 12px 35px;
+            border-radius: 50px; font-size: 18px; font-weight: bold;
+            pointer-events: auto; 
+            box-shadow: 0 4px 15px rgba(212, 56, 13, 0.4);
+            display: none; transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <div class="tip-box" id="status-text">初始化相机中...</div>
+        <button class="btn" id="action-btn" onclick="spawnWord()">🌸 点击生花</button>
+    </div>
+
+    <!-- 
+        重要：imageTargetSrc: './targets.mind' 
+        这里告诉程序去读取您刚才生成的识别文件
+    -->
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001;" 
+             color-space="sRGB" 
+             renderer="colorManagement: true, physicallyCorrectLights" 
+             vr-mode-ui="enabled: false" 
+             device-orientation-permission-ui="enabled: false">
+
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+        <!-- 识别到图片后，在这个容器里显示内容 -->
+        <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
+            <!-- 加一个半透明的光晕效果盖在图片上 -->
+            <a-plane color="#fff" opacity="0.1" height="1" width="1.5"></a-plane>
+            <a-entity id="word-group"></a-entity>
+        </a-entity>
+    </a-scene>
+
+    <script>
+        const statusText = document.getElementById('status-text');
+        const actionBtn = document.getElementById('action-btn');
+        const wordGroup = document.getElementById('word-group');
+        const anchor = document.getElementById('target-anchor');
+
+        // 这里定义点击后出现的字
+        const words = ["海", "上", "生", "花"];
+        // 定义字的颜色（水墨风：黑、深灰、红）
+        const colors = ["#000000", "#333333", "#d4380d", "#555555"];
+        
+        let count = 0;
+        let isTargetFound = false;
+
+        anchor.addEventListener("targetFound", event => {
+            statusText.innerText = "已识别！请点击按钮";
+            actionBtn.style.display = "block";
+            isTargetFound = true;
+        });
+
+        anchor.addEventListener("targetLost", event => {
+            statusText.innerText = "请对准“海上生花”图片";
+            actionBtn.style.display = "none";
+            isTargetFound = false;
+        });
+
+        function spawnWord() {
+            if (!isTargetFound) return;
+
+            const el = document.createElement('a-text');
+            const word = words[count % words.length]; // 轮流取字
+            const color = colors[count % colors.length];
+            count++;
+
+            // 设置文字
+            // 注意：默认字体可能不支持复杂中文，如果显示乱码，需要引入中文字体库
+            // 为简化演示，这里使用系统默认渲染，如果手机不支持会显示方框。
+            // 完美方案需要加载 .fnt 字体文件，或者使用 a-image 贴图代替文字。
+            el.setAttribute('value', word);
+            el.setAttribute('color', color);
+            el.setAttribute('align', 'center');
+            
+            // 为了解决中文字体问题，这里使用了 MindAR 默认字体
+            // 实际上为了美观，通常我们会做成 4 张透明背景的 png 图片来代替文字
+            // 这里为了演示代码简单，先用 scale 放大文字
+            el.setAttribute('scale', '3 3 3'); 
+
+            // 随机位置 (让字飘在图片上方不同位置)
+            const randomX = (Math.random() - 0.5) * 1.2; 
+            const randomY = (Math.random() - 0.5) * 0.8;
+            const randomZ = Math.random() * 0.5 + 0.2; // 浮起的高度
+
+            el.setAttribute('position', `${randomX} ${randomY} ${randomZ}`);
+
+            // 动画效果：淡入 + 上浮
+            el.setAttribute('animation__scale', {
+                property: 'scale',
+                from: '0 0 0',
+                to: '3 3 3',
+                dur: 800,
+                easing: 'easeOutElastic'
+            });
+
+            wordGroup.appendChild(el);
+        }
+    </script>
+</body>
+</html>
